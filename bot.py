@@ -4,8 +4,8 @@ import requests
 import os
 
 # Configurações (Render.com vai gerenciar esses valores)
-TOKEN = os.getenv("7909023141:AAFjX1UKlz6rstTfKB8sYvOHnUpNb0tBRfE")
-MERCADO_PAGO_TOKEN = os.getenv("5aea07b29bf5e32aa1aa7a4916d2e18aa347150f02d3c9869985fdf93c392ea4")
+TOKEN = os.getenv("SEU_TOKEN")
+MERCADO_PAGO_TOKEN = os.getenv("SEU_TOKEN")
 PDF_LINKS = {
     "pdf1": "https://drive.google.com/file/d/1-PwvnRSp73SpNYTqDg5TuJc8M5957CVF/view?usp=sharing",
     "pdf2": "https://drive.google.com/file/d/1-JzKTnHRg1Pj4x1BYH6I6GtHkMPEChcp/view?usp=sharing",

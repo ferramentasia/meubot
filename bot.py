@@ -3,6 +3,23 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 import requests
 import os
 
+# Configurar e iniciar o bot
+if __name__ == "__main__":
+    application = Application.builder().token(TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(button_click))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_payment_id))
+    application.run_polling()
+
+if __name__ == "__main__":
+    application = Application.builder().token(TOKEN).build()
+    
+    # Encerra webhooks anteriores (se houver)
+    await application.bot.delete_webhook()
+    
+    # Inicia o bot com polling
+    application.run_polling()
+
 # Configurações (Render.com vai gerenciar esses valores)
 TOKEN = os.getenv("TOKEN")
 MERCADO_PAGO_TOKEN = os.getenv("MERCADO_PAGO_TOKEN")
@@ -65,20 +82,5 @@ async def handle_payment_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("⚠️ Pagamento não confirmado. Verifique e tente novamente.")
 
-# Configurar e iniciar o bot
-if __name__ == "__main__":
-    application = Application.builder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(button_click))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_payment_id))
-    application.run_polling()
 
-if __name__ == "__main__":
-    application = Application.builder().token(TOKEN).build()
-    
-    # Encerra webhooks anteriores (se houver)
-    await application.bot.delete_webhook()
-    
-    # Inicia o bot com polling
-    application.run_polling()
     

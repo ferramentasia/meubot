@@ -18,12 +18,12 @@ PDF_LINKS = {
 # Iniciar o bot
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("📕 Planilha de Orçamento Familiar", callback_data='pdf1')],
-        [InlineKeyboardButton("📘 Guia de Compras Conscientes", callback_data='pdf2')],
-        [InlineKeyboardButton("📕 Dicas para Economizar Energia em Casa", callback_data='pdf3')],
-        [InlineKeyboardButton("📘 Receitas Econômicas e Saudáveis", callback_data='pdf4')],
-        [InlineKeyboardButton("📕 Guia para Sair das Dívidas", callback_data='pdf5')],
-        [InlineKeyboardButton("📘 Planejador de Metas Financeiras", callback_data='pdf6')],
+        [InlineKeyboardButton("Planilha de Orçamento Familiar", callback_data='pdf1')],
+        [InlineKeyboardButton("Guia de Compras Conscientes", callback_data='pdf2')],
+        [InlineKeyboardButton("Dicas para Economizar Energia em Casa", callback_data='pdf3')],
+        [InlineKeyboardButton("Receitas Econômicas e Saudáveis", callback_data='pdf4')],
+        [InlineKeyboardButton("Guia para Sair das Dívidas", callback_data='pdf5')],
+        [InlineKeyboardButton("Planejador de Metas Financeiras", callback_data='pdf6')],
     ]
     await update.message.reply_text(
         "Escolha um PDF:",
@@ -72,3 +72,13 @@ if __name__ == "__main__":
     application.add_handler(CallbackQueryHandler(button_click))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_payment_id))
     application.run_polling()
+
+if __name__ == "__main__":
+    application = Application.builder().token(TOKEN).build()
+    
+    # Encerra webhooks anteriores (se houver)
+    await application.bot.delete_webhook()
+    
+    # Inicia o bot com polling
+    application.run_polling()
+    

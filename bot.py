@@ -133,3 +133,22 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+from flask import Flask
+from threading import Thread
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot está online!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=int(os.getenv("PORT", 8000)))
+
+if __name__ == "__main__":
+    # Inicia o Flask em uma thread separada
+    Thread(target=run_flask).start()
+    
+    # Inicia o bot do Telegram
+    application.run_polling()

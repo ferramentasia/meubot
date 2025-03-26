@@ -3,15 +3,13 @@ import logging
 import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
+from flask import Flask
+from threading import Thread
 
-# Configuração básica
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+# Configuração
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Variáveis de ambiente (configure no Render)
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 MERCADOPAGO_TOKEN = os.getenv("MERCADOPAGO_TOKEN")
 PDF_LINKS = {
@@ -23,12 +21,18 @@ PDF_LINKS = {
     "pdf6": "https://drive.google.com/file/d/1-LBDKvaWpJUWjPguWZReHiIvwtyi6yWN/view?usp=sharing"
 }
 
-# =================================================================
-# Funções Principais
-# =================================================================
+# Flask para manter o bot ativo
+app = Flask(__name__)
 
+@app.route('/')
+def home():
+    return "Bot online!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=int(os.getenv("PORT", 8000)))
+
+# Handlers do Telegram
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Mensagem inicial com botões de escolha"""
     keyboard = [
         [InlineKeyboardButton("Planilha de Orçamento Familiar", callback_data='pdf1')],
         [InlineKeyboardButton("Guia de Compras Conscientes", callback_data='pdf2')],
@@ -37,118 +41,57 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("Guia para Sair das Dívidas", callback_data='pdf5')],
         [InlineKeyboardButton("Planejador de Metas Financeiras", callback_data='pdf6')]
     ]
-    await update.message.reply_text(
-        "📚 Escolha o PDF que deseja comprar:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    
+    await update.message.reply_text("Escolha um PDF:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processa a escolha do PDF e gera link de pagamento"""
     query = update.callback_query
-    await query.answer()  # Confirma o clique
+    await query.answer()
     
     try:
-        # Dados OBRIGATÓRIOS para o Mercado Pago
         payload = {
-            "transaction_amount": 19.90,  # Valor numérico (não usar string!)
+            "transaction_amount": 19.90,
             "payment_method_id": "pix",
             "payer": {
-                "email": "comprador@exemplo.com",  # E-mail válido (mesmo fictício)
-                "first_name": "Nome",              # Obrigatório
-                "last_name": "Sobrenome"           # Obrigatório
+                "email": "comprador@exemplo.com",
+                "first_name": "Nome",
+                "last_name": "Sobrenome"
             },
-            "description": f"Compra do {query.data}",
-            "installments": 1  # Campo obrigatório para a API
+            "description": f"PDF {query.data}",
+            "installments": 1
         }
         
-        # Envia a requisição para o Mercado Pago
         response = requests.post(
             "https://api.mercadopago.com/v1/payments",
-            headers={
-                "Authorization": f"Bearer {MERCADOPAGO_TOKEN}",
-                "Content-Type": "application/json",  # Header essencial
-                "X-Tracking-Id": "telegram-bot-pdf"  # Para rastreamento
-            },
+            headers={"Authorization": f"Bearer {MERCADOPAGO_TOKEN}", "Content-Type": "application/json"},
             json=payload
         )
-        response.raise_for_status()  # Gera erro para respostas 4xx/5xx
+        response.raise_for_status()
         
-        # Extrai o link de pagamento
-        payment_data = response.json()
-        payment_link = payment_data["point_of_interaction"]["transaction_data"]["ticket_url"]
-        
-        await query.edit_message_text(
-            f"💳 **Pague com PIX aqui:**\n{payment_link}\n\n"
-            "Após o pagamento, envie o **ID do pagamento** para liberar o PDF."
-        )
-        
-    except requests.exceptions.HTTPError as e:
-        # Log detalhado para diagnóstico
-        logger.error(f"Erro HTTP: {e.response.status_code} - Resposta: {e.response.text}")
-        await query.edit_message_text("🔒 Erro na comunicação com o gateway de pagamento.")
+        payment_link = response.json()["point_of_interaction"]["transaction_data"]["ticket_url"]
+        await query.edit_message_text(f"✅ Pague aqui: {payment_link}")
         
     except Exception as e:
-        logger.error(f"Erro crítico: {str(e)}")
-        await query.edit_message_text("❌ Erro interno. Tente novamente mais tarde.")
+        logger.error(f"Erro: {e}")
+        await query.edit_message_text("❌ Erro ao processar. Tente novamente.")
 
-
-async def handle_payment_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Verifica se o pagamento foi aprovado"""
-    payment_id = update.message.text.strip()
-    
+async def handle_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    payment_id = update.message.text
     try:
-        # Consulta o status do pagamento
         response = requests.get(
             f"https://api.mercadopago.com/v1/payments/{payment_id}",
             headers={"Authorization": f"Bearer {MERCADOPAGO_TOKEN}"}
         )
-        response.raise_for_status()
-        
-        payment_status = response.json()["status"]
-        
-        if payment_status == "approved":
-            await update.message.reply_text(f"✅ **Pagamento confirmado!** Baixe seu PDF aqui: {PDF_LINKS['pdf1']}")
+        if response.json()["status"] == "approved":
+            await update.message.reply_text(f"🎉 PDF: {PDF_LINKS['pdf1']}")
         else:
-            await update.message.reply_text("⚠️ Pagamento não aprovado. Verifique e tente novamente.")
-            
+            await update.message.reply_text("⚠️ Pagamento não aprovado.")
     except Exception as e:
-        logger.error(f"Erro na verificação: {str(e)}")
-        await update.message.reply_text("⚠️ Erro ao verificar pagamento. Contate o suporte.")
+        await update.message.reply_text("⚠️ Erro na verificação.")
 
-# =================================================================
-# Configuração do Bot
-# =================================================================
-
-def main():
-    # Inicializa o bot
+if __name__ == "__main__":
+    Thread(target=run_flask).start()
     application = Application.builder().token(TELEGRAM_TOKEN).build()
-    
-    # Registra os handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(handle_button))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_payment_id))
-    
-    # Inicia o bot em modo polling
-    application.run_polling()
-
-if __name__ == "__main__":
-    main()
-
-from flask import Flask
-from threading import Thread
-
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Bot está online!"
-
-def run_flask():
-    app.run(host='0.0.0.0', port=int(os.getenv("PORT", 8000)))
-
-if __name__ == "__main__":
-    # Inicia o Flask em uma thread separada
-    Thread(target=run_flask).start()
-    
-    # Inicia o bot do Telegram
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_payment))
     application.run_polling()

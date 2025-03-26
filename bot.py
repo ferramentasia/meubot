@@ -28,9 +28,6 @@ app = Flask(__name__)
 def home():
     return "Bot online!"
 
-def run_flask():
-    app.run(host='0.0.0.0', port=int(os.getenv("PORT", 8000)))
-
 # Handlers do Telegram
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -89,7 +86,11 @@ async def handle_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Erro na verificação.")
 
 if __name__ == "__main__":
-    Thread(target=run_flask).start()
+    # Configuração obrigatória para o Railway
+    PORT = int(os.getenv("PORT", 8000))
+    Thread(target=lambda: app.run(host='0.0.0.0', port=PORT)).start()
+    
+    # Inicia o bot do Telegram
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(handle_button))

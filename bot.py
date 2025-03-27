@@ -115,7 +115,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Geração do pagamento
         payload = {
-            "transaction_amount": 19.90,
+            "transaction_amount": 10.00,
             "payment_method_id": "pix",
             "payer": {
                 "email": "comprador@exemplo.com",

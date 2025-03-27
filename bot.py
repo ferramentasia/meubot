@@ -26,12 +26,12 @@ if not TELEGRAM_TOKEN or not MERCADOPAGO_TOKEN:
 
 # Links dos PDFs (substitua com seus links)
 PDF_LINKS = {
-    "pdf1": "https://drive.google.com/...",
-    "pdf2": "https://drive.google.com/...",
-    "pdf3": "https://drive.google.com/...",
-    "pdf4": "https://drive.google.com/...",
-    "pdf5": "https://drive.google.com/...",
-    "pdf6": "https://drive.google.com/..."
+    "pdf1": "https://drive.google.com/file/d/1-PwvnRSp73SpNYTqDg5TuJc8M5957CVF/view?usp=sharing",
+    "pdf2": "https://drive.google.com/file/d/1-JzKTnHRg1Pj4x1BYH6I6GtHkMPEChcp/view?usp=sharing",
+    "pdf3": "https://drive.google.com/file/d/1-dwYZDUWx4VoasF5bzKITCj55Uu-s4sb/view?usp=sharing",
+    "pdf4": "https://drive.google.com/file/d/1-ismWr0Qk2QJYl3TLzo7POi1lrq_1jac/view?usp=sharing",
+    "pdf5": "https://drive.google.com/file/d/1-nkMMXQXAXqH8CMLu2Kj-_pLXbhDTSo_/view?usp=sharing",
+    "pdf6": "https://drive.google.com/file/d/1-LBDKvaWpJUWjPguWZReHiIvwtyi6yWN/view?usp=sharing"
 }
 
 # ========================================================
@@ -45,7 +45,7 @@ MENSAGENS = {
     ),
     "menu": (
         "📚 *Nossos PDFs Disponíveis:*\n"
-        "Cada PDF custa R$ 9,90 e foi elaborado com muita pesquisa e dedicação 📖💛💡📚\n"
+        "Cada PDF custa R$ 9,90 e foi elaborado com muita pesquisa, carinho e dedicação 📖💛💡📚\n"
         "Ao clicar aqui vc irá para a página de pagamento do Mercadopago\n"
         "Selecione o que deseja adquirir:"
     ),
@@ -54,6 +54,7 @@ MENSAGENS = {
         "1\. Acesse o link: [Clique aqui]({payment_link})\n"
         "2\. Realize o pagamento\n"
         "3\. Envie o *ID do pagamento* aqui\n\n"
+        "4\. Você receberá o link do PDF\n"
         "⚠️ Link válido por 24 horas\."
     ),
     "pagamento_aprovado": (
@@ -91,12 +92,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mostra menu de PDFs"""
     keyboard = [
-        [InlineKeyboardButton("📕 PDF 1", callback_data='pdf1')],
-        [InlineKeyboardButton("📘 PDF 2", callback_data='pdf2')],
-        [InlineKeyboardButton("📗 PDF 3", callback_data='pdf3')],
-        [InlineKeyboardButton("📙 PDF 4", callback_data='pdf4')],
-        [InlineKeyboardButton("📔 PDF 5", callback_data='pdf5')],
-        [InlineKeyboardButton("📒 PDF 6", callback_data='pdf6')]
+        [InlineKeyboardButton("Planilha de Orçamento Familiar", callback_data='pdf1')],
+        [InlineKeyboardButton("Guia de Compras Conscientes", callback_data='pdf2')],
+        [InlineKeyboardButton("Dicas para Economizar Energia em Casa", callback_data='pdf3')],
+        [InlineKeyboardButton("Receitas Econômicas e Saudáveis", callback_data='pdf4')],
+        [InlineKeyboardButton("Guia para Sair das Dívidas", callback_data='pdf5')],
+        [InlineKeyboardButton("Planejador de Metas Financeiras", callback_data='pdf6')]
     ]
     
     await update.message.reply_text(
@@ -117,7 +118,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Geração do pagamento
         payload = {
-            "transaction_amount": 9.90,
+            "transaction_amount": 1.00,
             "payment_method_id": "pix",
             "payer": {
                 "email": "comprador@exemplo.com",

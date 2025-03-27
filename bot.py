@@ -17,13 +17,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Variáveis de ambiente (OBRIGATÓRIAS)
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 MERCADOPAGO_TOKEN = os.getenv("MERCADOPAGO_TOKEN")
 
 if not TELEGRAM_TOKEN or not MERCADOPAGO_TOKEN:
     raise ValueError("Configure as variáveis de ambiente!")
 
-# Links para 6 PDFs (substitua com seus links)
+# Links dos PDFs (substitua com seus links)
 PDF_LINKS = {
     "pdf1": "https://drive.google.com/file/d/1-PwvnRSp73SpNYTqDg5TuJc8M5957CVF/view?usp=sharing",
     "pdf2": "https://drive.google.com/file/d/1-JzKTnHRg1Pj4x1BYH6I6GtHkMPEChcp/view?usp=sharing",
@@ -34,23 +35,59 @@ PDF_LINKS = {
 }
 
 # ========================================================
-# PARTE DO FLASK
+# MENSAGENS (FÁCIL DE PERSONALIZAR)
+# ========================================================
+MENSAGENS = {
+    "start": (
+        "👋 *Bem-vindo ao Bot de PDFs!*\n\n"
+        "Aqui você encontra materiais exclusivos em formato digital\.\n"
+        "Use o comando /menu para ver a lista completa de PDFs disponíveis\."
+    ),
+    "menu": (
+        "📚 *Nossos PDFs Disponíveis:*\n"
+        "Selecione o que deseja adquirir:"
+    ),
+    "instrucoes_pagamento": (
+        "✅ *Pagamento via PIX*\n\n"
+        "1\. Acesse o link: [Clique aqui]({payment_link})\n"
+        "2\. Realize o pagamento\n"
+        "3\. Envie o *ID do pagamento* aqui\n\n"
+        "⚠️ Link válido por 24 horas\."
+    ),
+    "pagamento_aprovado": (
+        "🎉 *Pagamento confirmado\!*\n\n"
+        "Acesse seu PDF aqui:\n"
+        "{pdf_link}"
+    ),
+    "erro_generico": "🔧 Ocorreu um erro. Nossa equipe já foi notificada!"
+}
+
+# ========================================================
+# CONFIGURAÇÃO DO FLASK
 # ========================================================
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Bot operacional"
+    return "Bot em operação"
 
 def run_flask():
     port = int(os.getenv("PORT", 8000))
     app.run(host='0.0.0.0', port=port, threaded=True)
 
 # ========================================================
-# LÓGICA PRINCIPAL (CORRIGIDA E AMPLIADA)
+# LÓGICA PRINCIPAL DO BOT
 # ========================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Menu com 6 PDFs em lista vertical"""
+    """Boas-vindas inicial"""
+    await update.message.reply_text(
+        MENSAGENS["start"],
+        parse_mode="MarkdownV2",
+        disable_web_page_preview=True
+    )
+
+async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mostra menu de PDFs"""
     keyboard = [
         [InlineKeyboardButton("Planilha de Orçamento Familiar", callback_data='pdf1')],
         [InlineKeyboardButton("Guia de Compras Conscientes", callback_data='pdf2')],
@@ -61,22 +98,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     
     await update.message.reply_text(
-        "📚 Selecione seu PDF:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        MENSAGENS["menu"],
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="MarkdownV2"
     )
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processa seleção de PDFs com tratamento de erros melhorado"""
+    """Processa seleção de PDF"""
     query = update.callback_query
     await query.answer()
 
     try:
-        # Verifica se o PDF existe
         pdf_id = query.data
         if pdf_id not in PDF_LINKS:
             raise ValueError("PDF não encontrado")
 
-        # Dados para o Mercado Pago
+        # Geração do pagamento
         payload = {
             "transaction_amount": 19.90,
             "payment_method_id": "pix",
@@ -86,7 +123,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "last_name": "Sobrenome",
                 "identification": {"type": "CPF", "number": "12345678909"}
             },
-            "description": f"Compra do {pdf_id}",
+            "description": f"PDF {pdf_id}",
         }
 
         headers = {
@@ -105,23 +142,25 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         payment_data = response.json()
         payment_link = payment_data["point_of_interaction"]["transaction_data"]["ticket_url"]
         
-        # Formatação segura para MarkdownV2
+        # Resposta formatada
         await query.edit_message_text(
-            f"✅ *Link PIX:*\n[Clique aqui]({payment_link})\n\n"
-            "Após o pagamento, envie o *ID do pagamento* nesta conversa\.",
+            MENSAGENS["instrucoes_pagamento"].format(payment_link=payment_link),
             parse_mode="MarkdownV2",
             disable_web_page_preview=True
         )
 
+        # Armazena relação PDF-ID (para exemplo, use banco de dados em produção)
+        context.user_data["ultimo_pdf"] = pdf_id
+
     except requests.exceptions.HTTPError as e:
         logger.error(f"ERRO MP: {e.response.text}")
-        await query.edit_message_text("⚠️ Falha temporária. Tente novamente em 2 minutos.")
+        await query.edit_message_text(MENSAGENS["erro_generico"])
     except Exception as e:
         logger.error(f"ERRO: {str(e)}")
-        await query.edit_message_text("❌ Ocorreu um erro. Estamos resolvendo!")
+        await query.edit_message_text(MENSAGENS["erro_generico"])
 
 async def handle_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Verificação de pagamento para qualquer PDF"""
+    """Verifica pagamento e entrega PDF"""
     payment_id = update.message.text.strip()
 
     try:
@@ -133,12 +172,10 @@ async def handle_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         status = response.json()["status"]
         if status == "approved":
-            # Lógica para enviar o PDF correto (ajuste conforme sua necessidade)
+            pdf_id = context.user_data.get("ultimo_pdf", "pdf1")
             await update.message.reply_text(
-                "🎉 Pagamento aprovado! Acesse todos os PDFs aqui:\n"
-                f"{PDF_LINKS['pdf1']}\n"  # Altere para sua lógica de entrega
-                f"{PDF_LINKS['pdf2']}\n"
-                f"{PDF_LINKS['pdf3']}",
+                MENSAGENS["pagamento_aprovado"].format(pdf_link=PDF_LINKS[pdf_id]),
+                parse_mode="MarkdownV2",
                 disable_web_page_preview=True
             )
         else:
@@ -146,14 +183,16 @@ async def handle_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"ERRO VERIFICAÇÃO: {str(e)}")
-        await update.message.reply_text("🔴 Erro na verificação. Tente novamente.")
+        await update.message.reply_text(MENSAGENS["erro_generico"])
 
 # ========================================================
 # INICIALIZAÇÃO
 # ========================================================
 def main():
+    # Servidor web
     Thread(target=run_flask).start()
     
+    # Configuração do bot
     application = Application.builder()\
         .token(TELEGRAM_TOKEN)\
         .read_timeout(30)\
@@ -161,7 +200,9 @@ def main():
         .connect_timeout(30)\
         .build()
     
+    # Registra handlers
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("menu", menu))
     application.add_handler(CallbackQueryHandler(handle_button))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_payment))
     

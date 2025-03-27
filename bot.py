@@ -39,7 +39,7 @@ PDF_LINKS = {
 # ========================================================
 MENSAGENS = {
     "start": (
-        "👋 *Bem-vindo ao Bot de PDFs!*\n\n"
+        "👋 *Bem\-vindo ao Bot de PDFs\!*\n\n"
         "Aqui você encontra materiais exclusivos em formato digital\.\n"
         "Use o comando /menu para ver a lista completa de PDFs disponíveis\."
     ),

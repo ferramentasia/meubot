@@ -45,8 +45,7 @@ MENSAGENS = {
     ),
     "menu": (
         "📚 *Nossos PDFs Disponíveis:*\n"
-        "Cada PDF custa R$ 10,00 e foi elaborado com muita pesquisa e carinho 📖💛💡📚 Ao clicar aqui vc irá para a página de pagamento do Mercadopago\.\n"
-        "Selecione o que deseja adquirir\, Obrigado 🙏:"
+        "Selecione o que deseja adquirir:"
     ),
     "instrucoes_pagamento": (
         "✅ *Pagamento via PIX*\n\n"

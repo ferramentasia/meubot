@@ -7,9 +7,14 @@ from flask import Flask
 from threading import Thread
 import warnings
 
-# Configuração inicial
+# ========================================================
+# CONFIGURAÇÕES INICIAIS
+# ========================================================
 warnings.filterwarnings("ignore", message="Werkzeug")  # Remove avisos irrelevantes
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
 # Variáveis de ambiente (OBRIGATÓRIAS)
@@ -31,7 +36,7 @@ PDF_LINKS = {
 }
 
 # ========================================================
-# Parte do Flask (para manter o bot online)
+# PARTE DO FLASK (PARA MANTER O BOT ONLINE)
 # ========================================================
 app = Flask(__name__)
 
@@ -44,9 +49,10 @@ def run_flask():
     app.run(host='0.0.0.0', port=port, threaded=True)
 
 # ========================================================
-# Lógica do Bot (REVISADA E TESTADA)
+# LÓGICA DO BOT (COM TODOS OS AJUSTES)
 # ========================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Menu principal com botões"""
     keyboard = [
         [InlineKeyboardButton("Planilha de Orçamento Familiar", callback_data='pdf1')],
         [InlineKeyboardButton("Guia de Compras Conscientes", callback_data='pdf2')],
@@ -61,15 +67,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gera link de pagamento PIX"""
     query = update.callback_query
     await query.answer()
 
     try:
         # Payload 100% compatível com a API do Mercado Pago
         payload = {
-            "description": f"Compra do {query.data}",
-            "payment_method_id": "pix",
             "transaction_amount": 19.90,
+            "payment_method_id": "pix",
             "payer": {
                 "email": "comprador@exemplo.com",
                 "first_name": "Nome",
@@ -79,14 +85,14 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "number": "12345678909"  # CPF de teste válido
                 }
             },
-            "notification_url": "https://seu-webhook.com/notificacoes"  # Opcional
+            "description": f"Compra do {query.data}",
         }
 
-        # Headers corrigidos
+        # Headers corrigidos (X-Idempotency-Key é obrigatório!)
         headers = {
             "Authorization": f"Bearer {MERCADOPAGO_TOKEN}",
             "Content-Type": "application/json",
-            "X-Tracking-Id": "telegram-bot-pdf"  # Para rastreamento
+            "X-Idempotency-Key": str(query.id)  # Chave única baseada no ID da query
         }
 
         response = requests.post(
@@ -100,20 +106,20 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         payment_link = payment_data["point_of_interaction"]["transaction_data"]["ticket_url"]
         
         await query.edit_message_text(
-            f"✅ *PIX Copia e Cola:*\n{payment_link}\n\n"
+            f"✅ *Link PIX:*\n{payment_link}\n\n"
             "Após pagar, envie o **ID do pagamento** aqui.",
             parse_mode="Markdown"
         )
 
     except requests.exceptions.HTTPError as e:
         logger.error(f"ERRO MP [HTTP {e.response.status_code}]: {e.response.text}")
-        await query.edit_message_text("⚠️ Falha temporária. Tente novamente em 1 minuto.")
-        
+        await query.edit_message_text("⚠️ Falha temporária. Tente novamente.")
     except Exception as e:
         logger.error(f"ERRO CRÍTICO: {str(e)}")
         await query.edit_message_text("🔴 Erro interno. Contate o suporte.")
 
 async def handle_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Verificação de pagamento"""
     payment_id = update.message.text.strip()
 
     try:
@@ -135,18 +141,26 @@ async def handle_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except requests.exceptions.HTTPError as e:
         logger.error(f"Erro verificação: {e.response.text}")
         await update.message.reply_text("❌ ID inválido. Verifique e tente novamente.")
+    except Exception as e:
+        logger.error(f"Erro verificação: {str(e)}")
+        await update.message.reply_text("⚙️ Erro na verificação. Contate o suporte.")
 
 # ========================================================
-# Inicialização
+# INICIALIZAÇÃO (COM TIMEOUTS AJUSTADOS)
 # ========================================================
 def main():
+    # Inicia servidor web em segundo plano
     Thread(target=run_flask).start()
+
+    # Configuração do bot com timeouts aumentados
+    application = Application.builder().token(TELEGRAM_TOKEN).read_timeout(30).write_timeout(30).connect_timeout(30).build()
     
-    application = Application.builder().token(TELEGRAM_TOKEN).build()
+    # Registra handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(handle_button))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_payment))
-    
+
+    # Inicia o bot
     application.run_polling()
 
 if __name__ == "__main__":

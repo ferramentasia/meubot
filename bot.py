@@ -9,7 +9,7 @@ from flask import Flask, request, jsonify
 from threading import Thread
 
 # ========================================================
-# CONFIGURAÇÕES DE PRODUÇÃO (OBRIGATÓRIAS)
+# CONFIGURAÇÕES
 # ========================================================
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -17,12 +17,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")         # Token do BotFather
-MERCADOPAGO_TOKEN = os.getenv("MERCADOPAGO_TOKEN")   # Token de produção (APP_USR-...)
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")         # Chave HMAC (ex: openssl rand -hex 32)
-DOMINIO = os.getenv("RAILWAY_STATIC_URL")            # Automático no Railway
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+MERCADOPAGO_TOKEN = os.getenv("MERCADOPAGO_TOKEN")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
+DOMINIO = os.getenv("RAILWAY_STATIC_URL")
 
-# Links REAIS dos PDFs (SUBSTITUA COM SEUS LINKS!)
 PDF_LINKS = {
     "pdf1": "https://drive.google.com/file/d/1-PwvnRSp73SpNYTqDg5TuJc8M5957CVF/view?usp=sharing",
     "pdf2": "https://drive.google.com/file/d/1-JzKTnHRg1Pj4x1BYH6I6GtHkMPEChcp/view?usp=sharing",
@@ -33,7 +32,7 @@ PDF_LINKS = {
 }
 
 # ========================================================
-# SERVIDOR WEB PARA WEBHOOK (FLASK)
+# SERVIDOR WEB (FLASK)
 # ========================================================
 app = Flask(__name__)
 
@@ -46,40 +45,40 @@ def mercadopago_webhook():
         hash_obj = hmac.new(WEBHOOK_SECRET.encode(), payload, hashlib.sha256)
         
         if not hmac.compare_digest(signature, f"sha256={hash_obj.hexdigest()}"):
-            logger.error("Tentativa de acesso não autorizada!")
+            logger.error("Assinatura inválida!")
             return jsonify({"status": "error"}), 403
 
         # Processa pagamento
-        payment_id = request.json['data']['id']
+        payment_id = request.json.get('data', {}).get('id')
         response = requests.get(
             f"https://api.mercadopago.com/v1/payments/{payment_id}",
             headers={"Authorization": f"Bearer {MERCADOPAGO_TOKEN}"}
         )
         payment_data = response.json()
 
-        if payment_data['status'] == 'approved':
-            user_id, pdf_id = payment_data['external_reference'].split(':')
-            pdf_link = PDF_LINKS[pdf_id]
-            
-            # Envia PDF via Telegram
-            requests.post(
-                f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-                json={
-                    "chat_id": user_id,
-                    "text": f"✅ *PAGAMENTO CONFIRMADO!*\n\n📥 ACESSE SEU PDF:\n{pdf_link}",
-                    "parse_mode": "MarkdownV2",
-                    "disable_web_page_preview": True
-                }
-            )
+        if payment_data.get('status') == 'approved':
+            external_ref = payment_data.get('external_reference', '')
+            if ':' in external_ref:
+                user_id, pdf_id = external_ref.split(':')
+                if pdf_link := PDF_LINKS.get(pdf_id):
+                    requests.post(
+                        f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+                        json={
+                            "chat_id": user_id,
+                            "text": f"✅ *Pagamento confirmado!*\n\nAcesse seu PDF: {pdf_link}",
+                            "parse_mode": "MarkdownV2",
+                            "disable_web_page_preview": True
+                        }
+                    )
         
         return jsonify({"status": "success"}), 200
 
     except Exception as e:
-        logger.error(f"ERRO: {str(e)}")
+        logger.error(f"Erro no webhook: {str(e)}")
         return jsonify({"status": "error"}), 500
 
 # ========================================================
-# LÓGICA DO BOT TELEGRAM
+# LÓGICA DO BOT (COM TRATAMENTO DE ERROS)
 # ========================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -91,7 +90,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🎯 Metas Financeiras (R$9,90)", callback_data='pdf6')]
     ]
     await update.message.reply_text(
-        "📚 *LOJA DE MATERIAIS EDUCACIONAIS*",
+        "📚 *Escolha seu PDF:*",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="MarkdownV2"
     )
@@ -100,33 +99,59 @@ async def handle_pdf_selection(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    pdf_id = query.data
-    
-    # Cria pagamento no Mercado Pago
-    response = requests.post(
-        "https://api.mercadopago.com/v1/payments",
-        headers={"Authorization": f"Bearer {MERCADOPAGO_TOKEN}"},
-        json={
-            "transaction_amount": 1.00,
-            "payment_method_id": "pix",
-            "payer": {"email": "cliente@exemplo.com"},
-            "description": f"PDF {pdf_id.upper()}",
-            "external_reference": f"{user_id}:{pdf_id}",
-            "notification_url": f"{DOMINIO}/mercadopago_webhook"
-        }
-    )
-    payment_data = response.json()
-    payment_link = payment_data['point_of_interaction']['transaction_data']['ticket_url']
-    
-    await query.edit_message_text(
-        f"💳 *PAGAMENTO VIA PIX*\n\n"
-        f"Valor: R$ 9,90\n"
-        f"[Clique aqui para pagar]({payment_link})\n\n"
-        "Após a confirmação do pagamento, enviaremos o material automaticamente!",
-        parse_mode="MarkdownV2",
-        disable_web_page_preview=True
-    )
+    try:
+        user_id = query.from_user.id
+        pdf_id = query.data
+        
+        # Cria pagamento no Mercado Pago
+        response = requests.post(
+            "https://api.mercadopago.com/v1/payments",
+            headers={
+                "Authorization": f"Bearer {MERCADOPAGO_TOKEN}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "transaction_amount": 1.00,
+                "payment_method_id": "pix",
+                "payer": {
+                    "email": "comprador@exemplo.com",
+                    "identification": {
+                        "type": "CPF",
+                        "number": "12345678909"
+                    }
+                },
+                "description": f"PDF {pdf_id}",
+                "external_reference": f"{user_id}:{pdf_id}",
+                "notification_url": f"{DOMINIO}/mercadopago_webhook"
+            }
+        )
+
+        # Verifica erros na API do Mercado Pago
+        if response.status_code != 201:
+            logger.error(f"Erro ao criar pagamento: {response.text}")
+            await query.edit_message_text("❌ Erro ao processar pagamento. Tente novamente.")
+            return
+
+        payment_data = response.json()
+        
+        # Verifica estrutura da resposta
+        if "point_of_interaction" not in payment_data:
+            logger.error(f"Resposta inesperada da API: {payment_data}")
+            await query.edit_message_text("❌ Erro inesperado. Contate o suporte.")
+            return
+            
+        payment_link = payment_data['point_of_interaction']['transaction_data']['ticket_url']
+        
+        await query.edit_message_text(
+            f"💳 [Clique para pagar via PIX]({payment_link})\n\n"
+            "Após a confirmação, seu PDF será enviado automaticamente!",
+            parse_mode="MarkdownV2",
+            disable_web_page_preview=True
+        )
+
+    except Exception as e:
+        logger.error(f"Erro crítico: {str(e)}", exc_info=True)
+        await query.edit_message_text("⚠️ Ocorreu um erro. Nossa equipe foi notificada!")
 
 # ========================================================
 # INICIALIZAÇÃO

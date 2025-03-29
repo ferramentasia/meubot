@@ -105,11 +105,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("📊 Planilha Orçamento", callback_data='pdf1'),
-        [InlineKeyboardButton("🛒 Guia Compras", callback_data='pdf2'),
-        [InlineKeyboardButton("💡 Economia Energia", callback_data='pdf3'),
-        [InlineKeyboardButton("🍲 Receitas Econômicas", callback_data='pdf4'),
-        [InlineKeyboardButton("🚀 Sair das Dívidas", callback_data='pdf5'),
+        [InlineKeyboardButton("📊 Planilha Orçamento", callback_data='pdf1')],
+        [InlineKeyboardButton("🛒 Guia Compras", callback_data='pdf2')],
+        [InlineKeyboardButton("💡 Economia Energia", callback_data='pdf3')],
+        [InlineKeyboardButton("🍲 Receitas Econômicas", callback_data='pdf4')],
+        [InlineKeyboardButton("🚀 Sair das Dívidas", callback_data='pdf5')],
         [InlineKeyboardButton("🎯 Metas Financeiras", callback_data='pdf6')]
     ]
     
@@ -118,7 +118,6 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="MarkdownV2"
     )
-
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()

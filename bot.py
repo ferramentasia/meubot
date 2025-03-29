@@ -21,7 +21,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")  # Verifique o nome exato no Railwa
 MERCADOPAGO_TOKEN = os.getenv("MERCADOPAGO_TOKEN")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 DOMINIO = os.getenv("RAILWAY_STATIC_URL")  # Automático no Railway
-PORT = int(os.getenv("PORT", 8080))  # Porta dinâmica do Railway
+
 
 # Links reais dos seus PDFs (SUBSTITUA!)
 PDF_LINKS = {

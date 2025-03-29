@@ -7,6 +7,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from flask import Flask, request, jsonify
 from threading import Thread
+from urllib.parse import urljoin
 
 # ========================================================
 # CONFIGURAÇÕES
@@ -20,8 +21,9 @@ logger = logging.getLogger(__name__)
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 MERCADOPAGO_TOKEN = os.getenv("MERCADOPAGO_TOKEN")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
-DOMINIO = os.getenv("RAILWAY_STATIC_URL")
+DOMINIO = os.getenv("RAILWAY_STATIC_URL")  # Ex: https://seusite.up.railway.app
 
+# Links reais dos PDFs (substitua!)
 PDF_LINKS = {
     "pdf1": "https://drive.google.com/file/d/1-PwvnRSp73SpNYTqDg5TuJc8M5957CVF/view?usp=sharing",
     "pdf2": "https://drive.google.com/file/d/1-JzKTnHRg1Pj4x1BYH6I6GtHkMPEChcp/view?usp=sharing",
@@ -65,7 +67,7 @@ def mercadopago_webhook():
                         f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
                         json={
                             "chat_id": user_id,
-                            "text": f"✅ *Pagamento confirmado!*\n\nAcesse seu PDF: {pdf_link}",
+                            "text": f"✅ *Pagamento confirmado!*\n\nAcesse: {pdf_link}",
                             "parse_mode": "MarkdownV2",
                             "disable_web_page_preview": True
                         }
@@ -74,7 +76,7 @@ def mercadopago_webhook():
         return jsonify({"status": "success"}), 200
 
     except Exception as e:
-        logger.error(f"Erro no webhook: {str(e)}")
+        logger.error(f"Erro webhook: {str(e)}")
         return jsonify({"status": "error"}), 500
 
 # ========================================================
@@ -103,7 +105,11 @@ async def handle_pdf_selection(update: Update, context: ContextTypes.DEFAULT_TYP
         user_id = query.from_user.id
         pdf_id = query.data
         
-        # Cria pagamento no Mercado Pago
+        # Garante que a URL é válida
+        notification_url = urljoin(DOMINIO, "/mercadopago_webhook")
+        logger.info(f"URL do Webhook: {notification_url}")
+        
+        # Cria pagamento
         response = requests.post(
             "https://api.mercadopago.com/v1/payments",
             headers={
@@ -122,36 +128,28 @@ async def handle_pdf_selection(update: Update, context: ContextTypes.DEFAULT_TYP
                 },
                 "description": f"PDF {pdf_id}",
                 "external_reference": f"{user_id}:{pdf_id}",
-                "notification_url": f"{DOMINIO}/mercadopago_webhook"
+                "notification_url": notification_url  # URL corrigida
             }
         )
 
-        # Verifica erros na API do Mercado Pago
         if response.status_code != 201:
-            logger.error(f"Erro ao criar pagamento: {response.text}")
-            await query.edit_message_text("❌ Erro ao processar pagamento. Tente novamente.")
+            logger.error(f"Erro MP: {response.status_code} - {response.text}")
+            await query.edit_message_text("❌ Erro ao processar pagamento.")
             return
 
         payment_data = response.json()
-        
-        # Verifica estrutura da resposta
-        if "point_of_interaction" not in payment_data:
-            logger.error(f"Resposta inesperada da API: {payment_data}")
-            await query.edit_message_text("❌ Erro inesperado. Contate o suporte.")
-            return
-            
         payment_link = payment_data['point_of_interaction']['transaction_data']['ticket_url']
         
         await query.edit_message_text(
             f"💳 [Clique para pagar via PIX]({payment_link})\n\n"
-            "Após a confirmação, seu PDF será enviado automaticamente!",
+            "Após a confirmação, o PDF será enviado automaticamente!",
             parse_mode="MarkdownV2",
             disable_web_page_preview=True
         )
 
     except Exception as e:
-        logger.error(f"Erro crítico: {str(e)}", exc_info=True)
-        await query.edit_message_text("⚠️ Ocorreu um erro. Nossa equipe foi notificada!")
+        logger.error(f"Erro crítico: {str(e)}")
+        await query.edit_message_text("⚠️ Erro interno. Contate o suporte.")
 
 # ========================================================
 # INICIALIZAÇÃO

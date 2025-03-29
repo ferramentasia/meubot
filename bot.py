@@ -1,11 +1,13 @@
 import os
 import logging
 import requests
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from flask import Flask, request, jsonify
 import hmac
 import hashlib
+from waitress import serve
 
 # ========================================================
 # CONFIGURAÇÕES
@@ -45,10 +47,10 @@ def home():
     return "✅ Bot operacional! Envie /start no Telegram."
 
 @app.route('/telegram_webhook', methods=['POST'])
-def telegram_webhook():
+async def telegram_webhook():
     try:
         update = Update.de_json(request.get_json(), application.bot)
-        application.process_update(update)
+        await application.process_update(update)
         return 'OK', 200
     except Exception as e:
         logger.error(f"Erro Telegram: {str(e)}")
@@ -152,24 +154,22 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Erro ao gerar pagamento. Tente novamente.")
 
 # ========================================================
-# INICIALIZAÇÃO (PORT 8080 PARA RAILWAY)
+# INICIALIZAÇÃO (PRODUÇÃO)
 # ========================================================
-def main():
-    # Registra handlers do bot
+async def main():
+    # Configura webhook
+    await application.bot.set_webhook(
+        url=f"{DOMINIO}/telegram_webhook",
+        secret_token=WEBHOOK_SECRET
+    )
+    
+    # Registra handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("menu", menu))
     application.add_handler(CallbackQueryHandler(handle_button))
     
-    # Configura webhook
-    application.updater.start_webhook(
-        listen="0.0.0.0",
-        port=int(os.getenv("PORT", 8080)),
-        webhook_url=f"{DOMINIO}/telegram_webhook",
-        secret_token=WEBHOOK_SECRET
-    )
-    
-    # Inicia Flask
-    app.run(host='0.0.0.0', port=int(os.getenv("PORT", 8080)))
+    # Inicia servidor Flask com Waitress
+    serve(app, host="0.0.0.0", port=8080)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

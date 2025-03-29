@@ -4,7 +4,6 @@ import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from flask import Flask, request, jsonify
-from threading import Thread
 import hmac
 import hashlib
 
@@ -22,6 +21,7 @@ MERCADOPAGO_TOKEN = os.getenv("MERCADOPAGO_TOKEN")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 DOMINIO = os.getenv("RAILWAY_STATIC_URL")
 
+# LINKS REAIS DOS PDFs (SUBSTITUA)
 PDF_LINKS = {
     "pdf1": "https://drive.google.com/file/d/1-PwvnRSp73SpNYTqDg5TuJc8M5957CVF/view?usp=sharing",
     "pdf2": "https://drive.google.com/file/d/1-JzKTnHRg1Pj4x1BYH6I6GtHkMPEChcp/view?usp=sharing",
@@ -32,31 +32,44 @@ PDF_LINKS = {
 }
 
 # ========================================================
-# FLASK (RODANDO NA PORTA CORRETA)
+# INICIALIZAÇÃO DO BOT
 # ========================================================
+application = Application.builder().token(TELEGRAM_TOKEN).build()
 app = Flask(__name__)
 
+# ========================================================
+# ROTAS FLASK
+# ========================================================
 @app.route('/')
 def home():
-    return "✅ Bot operacional! Acesse via Telegram."
+    return "🚀 Bot operacional! Envie /start no Telegram."
 
-@app.route('/webhook', methods=['POST'])
-def mercadopago_webhook():
+@app.route('/telegram_webhook', methods=['POST'])
+def telegram_webhook():
+    """Recebe atualizações do Telegram"""
     try:
-        # Validação HMAC
+        update = Update.de_json(request.get_json(), application.bot)
+        application.process_update(update)
+        return 'OK', 200
+    except Exception as e:
+        logger.error(f"Erro Telegram webhook: {str(e)}")
+        return 'Erro', 500
+
+@app.route('/mercadopago_webhook', methods=['POST'])
+def mercadopago_webhook():
+    """Processa pagamentos do Mercado Pago"""
+    try:
+        # Valida HMAC
         signature = request.headers.get('X-Signature')
         payload = request.get_data()
         hash_obj = hmac.new(WEBHOOK_SECRET.encode(), payload, hashlib.sha256)
         
         if not hmac.compare_digest(signature, f"sha256={hash_obj.hexdigest()}"):
             logger.error("Assinatura inválida!")
-            return jsonify({"status": "error"}), 403
+            return jsonify({"status": "assinatura inválida"}), 403
 
+        # Processa pagamento
         payment_id = request.json.get('data', {}).get('id')
-        if not payment_id:
-            return jsonify({"status": "invalid data"}), 400
-
-        # Busca status do pagamento
         response = requests.get(
             f"https://api.mercadopago.com/v1/payments/{payment_id}",
             headers={"Authorization": f"Bearer {MERCADOPAGO_TOKEN}"}
@@ -67,12 +80,10 @@ def mercadopago_webhook():
             external_ref = payment_data.get('external_reference', '')
             if ':' in external_ref:
                 user_id, pdf_id = external_ref.split(':')
-                pdf_link = PDF_LINKS.get(pdf_id)
-                
-                if pdf_link:
+                if pdf_link := PDF_LINKS.get(pdf_id):
                     application.bot.send_message(
                         chat_id=user_id,
-                        text=f"✅ *Pagamento Aprovado!*\n\nAcesse seu PDF: {pdf_link}",
+                        text=f"✅ *Pagamento Aprovado!*\n\nAcesse: {pdf_link}",
                         parse_mode="MarkdownV2",
                         disable_web_page_preview=True
                     )
@@ -80,30 +91,30 @@ def mercadopago_webhook():
         return jsonify({"status": "success"}), 200
 
     except Exception as e:
-        logger.error(f"Erro no webhook: {str(e)}")
+        logger.error(f"Erro MP webhook: {str(e)}")
         return jsonify({"status": "error"}), 500
 
 # ========================================================
-# BOT TELEGRAM (USANDO WEBHOOK)
+# COMANDOS DO BOT
 # ========================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Bem-vindo! Use /menu para ver os PDFs.",
+        "👋 Bem-vindo! Use /menu para ver os PDFs",
         parse_mode="MarkdownV2"
     )
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("📊 Planilha Orçamento", callback_data='pdf1')],
-        [InlineKeyboardButton("🛒 Guia Compras", callback_data='pdf2')],
-        [InlineKeyboardButton("💡 Economia Energia", callback_data='pdf3')],
-        [InlineKeyboardButton("🍲 Receitas Econômicas", callback_data='pdf4')],
-        [InlineKeyboardButton("🚀 Sair das Dívidas", callback_data='pdf5')],
+        [InlineKeyboardButton("📊 Planilha Orçamento", callback_data='pdf1'),
+        [InlineKeyboardButton("🛒 Guia Compras", callback_data='pdf2'),
+        [InlineKeyboardButton("💡 Economia Energia", callback_data='pdf3'),
+        [InlineKeyboardButton("🍲 Receitas Econômicas", callback_data='pdf4'),
+        [InlineKeyboardButton("🚀 Sair das Dívidas", callback_data='pdf5'),
         [InlineKeyboardButton("🎯 Metas Financeiras", callback_data='pdf6')]
     ]
     
     await update.message.reply_text(
-        "📚 *Escolha seu PDF:*\nPreço: R\$9,90 • Pagamento via PIX",
+        "📚 *PDFs Disponíveis:*\nValor: R\$9,90 • Pagamento via PIX",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="MarkdownV2"
     )
@@ -112,16 +123,16 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    pdf_id = query.data
     user_id = query.from_user.id
+    pdf_id = query.data
     
     payload = {
         "transaction_amount": 1.00,
         "payment_method_id": "pix",
-        "payer": {"email": "user@example.com"},
+        "payer": {"email": "user@exemplo.com"},
         "description": f"PDF {pdf_id}",
         "external_reference": f"{user_id}:{pdf_id}",
-        "notification_url": f"{DOMINIO}/webhook"
+        "notification_url": f"{DOMINIO}/mercadopago_webhook"
     }
     
     try:
@@ -134,28 +145,34 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         payment_link = payment_data['point_of_interaction']['transaction_data']['ticket_url']
         
         await query.edit_message_text(
-            f"💳 [Clique para pagar via PIX]({payment_link})\n\nApós pagar, o PDF será enviado automaticamente!",
+            f"💳 [PAGAR VIA PIX]({payment_link})\n\nApós pagar, o PDF será enviado automaticamente!",
             parse_mode="MarkdownV2",
             disable_web_page_preview=True
         )
         
     except Exception as e:
-        logger.error(f"Erro MP: {str(e)}")
-        await query.edit_message_text("❌ Erro ao processar pagamento.")
+        logger.error(f"Erro pagamento: {str(e)}")
+        await query.edit_message_text("❌ Erro ao gerar pagamento. Tente novamente.")
 
 # ========================================================
-# INICIALIZAÇÃO (CONFIGURAÇÃO PARA RAILWAY)
+# INICIALIZAÇÃO
 # ========================================================
-def run_flask():
-    app.run(host='0.0.0.0', port=int(os.getenv("PORT", 8080)))
-
-def run_bot():
-    application = Application.builder().token(TELEGRAM_TOKEN).build()
+def main():
+    # Registra handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("menu", menu))
     application.add_handler(CallbackQueryHandler(handle_button))
-    application.run_polling()
+    
+    # Configura webhook
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.getenv("PORT", 8080)),
+        webhook_url=f"{DOMINIO}/telegram_webhook",
+        secret_token=WEBHOOK_SECRET
+    )
+    
+    # Inicia Flask
+    app.run(host='0.0.0.0', port=int(os.getenv("PORT", 8080)))
 
 if __name__ == "__main__":
-    Thread(target=run_flask).start()
-    Thread(target=run_bot).start()
+    main()

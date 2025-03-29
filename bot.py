@@ -33,10 +33,16 @@ PDF_LINKS = {
 }
 
 # ========================================================
-# WEBHOOK (FLASK)
+# CONFIGURAÇÃO DO FLASK (WEBSERVER)
 # ========================================================
 app = Flask(__name__)
 
+# Rota principal para verificar se o servidor está online
+@app.route('/')
+def home():
+    return "🚀 Bot em operação! Acesse via Telegram: t.me/seu_bot"
+
+# Rota do webhook para processar pagamentos
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
@@ -51,7 +57,7 @@ def webhook():
 
         payment_id = request.json.get('data', {}).get('id')
         if not payment_id:
-            return jsonify({"status": "invalid data"}), 400
+            return jsonify({"status": "dados inválidos"}), 400
 
         # Busca detalhes do pagamento
         response = requests.get(
@@ -67,6 +73,7 @@ def webhook():
                 pdf_link = PDF_LINKS.get(pdf_id)
                 
                 if pdf_link:
+                    # Envia o PDF via Telegram
                     application.bot.send_message(
                         chat_id=user_id,
                         text=f"✅ *Pagamento Aprovado!*\n\nAcesse seu PDF: {pdf_link}",
@@ -81,7 +88,7 @@ def webhook():
         return jsonify({"status": "error"}), 500
 
 # ========================================================
-# LÓGICA DO BOT
+# LÓGICA DO BOT TELEGRAM
 # ========================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -135,8 +142,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await query.edit_message_text(
             f"🔗 [Clique aqui para pagar via PIX]({payment_link})\n\n"
-            "Após a confirmação do pagamento, enviaremos o PDF automaticamente!\n"
-            "⚠️ Use os dados de teste do Mercado Pago Sandbox",
+            "Após a confirmação do pagamento, enviaremos o PDF automaticamente!",
             parse_mode="MarkdownV2",
             disable_web_page_preview=True
         )
@@ -146,7 +152,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Erro ao processar pagamento. Tente novamente.")
 
 # ========================================================
-# DEPLOY
+# INICIALIZAÇÃO
 # ========================================================
 def run_flask():
     app.run(host='0.0.0.0', port=int(os.getenv("PORT", 8000)))
@@ -154,13 +160,13 @@ def run_flask():
 if __name__ == "__main__":
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
-    # Handlers
+    # Registra handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("menu", menu))
     application.add_handler(CallbackQueryHandler(handle_button))
     
-    # Inicia servidor web
+    # Inicia servidor web em thread separada
     Thread(target=run_flask).start()
     
-    # Roda o bot
+    # Inicia o bot
     application.run_polling()

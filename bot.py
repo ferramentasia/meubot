@@ -2,12 +2,11 @@ import os
 import logging
 import requests
 import asyncio
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from flask import Flask, request, jsonify
 import hmac
 import hashlib
-from waitress import serve
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from quart import Quart, request, jsonify, Response
 
 # ========================================================
 # CONFIGURAÇÕES
@@ -23,7 +22,6 @@ MERCADOPAGO_TOKEN = os.getenv("MERCADOPAGO_TOKEN")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 DOMINIO = os.getenv("RAILWAY_STATIC_URL")
 
-# LINKS REAIS DOS PDFs (SUBSTITUA!)
 PDF_LINKS = {
     "pdf1": "https://drive.google.com/file/d/1-PwvnRSp73SpNYTqDg5TuJc8M5957CVF/view?usp=sharing",
     "pdf2": "https://drive.google.com/file/d/1-JzKTnHRg1Pj4x1BYH6I6GtHkMPEChcp/view?usp=sharing",
@@ -36,39 +34,39 @@ PDF_LINKS = {
 # ========================================================
 # INICIALIZAÇÃO
 # ========================================================
-app = Flask(__name__)
+app = Quart(__name__)
 application = Application.builder().token(TELEGRAM_TOKEN).build()
 
 # ========================================================
-# ROTAS FLASK
+# ROTAS QUART (FLASK ASYNC)
 # ========================================================
 @app.route('/')
-def home():
+async def home():
     return "✅ Bot operacional! Envie /start no Telegram."
 
 @app.route('/telegram_webhook', methods=['POST'])
 async def telegram_webhook():
     try:
-        update = Update.de_json(request.get_json(), application.bot)
+        data = await request.get_json()
+        update = Update.de_json(data, application.bot)
         await application.process_update(update)
-        return 'OK', 200
+        return Response(status=200)
     except Exception as e:
         logger.error(f"Erro Telegram: {str(e)}")
-        return 'Erro', 500
+        return Response(status=500)
 
 @app.route('/mercadopago_webhook', methods=['POST'])
-def mercadopago_webhook():
+async def mercadopago_webhook():
     try:
-        # Valida HMAC
         signature = request.headers.get('X-Signature')
-        payload = request.get_data()
+        payload = await request.get_data()
         hash_obj = hmac.new(WEBHOOK_SECRET.encode(), payload, hashlib.sha256)
         
         if not hmac.compare_digest(signature, f"sha256={hash_obj.hexdigest()}"):
             logger.error("Assinatura inválida!")
             return jsonify({"status": "error"}), 403
 
-        payment_id = request.json.get('data', {}).get('id')
+        payment_id = (await request.get_json()).get('data', {}).get('id')
         response = requests.get(
             f"https://api.mercadopago.com/v1/payments/{payment_id}",
             headers={"Authorization": f"Bearer {MERCADOPAGO_TOKEN}"}
@@ -80,7 +78,7 @@ def mercadopago_webhook():
             if ':' in external_ref:
                 user_id, pdf_id = external_ref.split(':')
                 if pdf_link := PDF_LINKS.get(pdf_id):
-                    application.bot.send_message(
+                    await application.bot.send_message(
                         chat_id=user_id,
                         text=f"✅ *Pagamento Aprovado!*\n\nAcesse: {pdf_link}",
                         parse_mode="MarkdownV2",
@@ -94,11 +92,11 @@ def mercadopago_webhook():
         return jsonify({"status": "error"}), 500
 
 # ========================================================
-# COMANDOS DO BOT
+# HANDLERS DO BOT
 # ========================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Bem-vindo! Use /menu para ver os PDFs.",
+        "👋 Bem-vindo! Use /menu para ver os PDFs disponíveis.",
         parse_mode="MarkdownV2"
     )
 
@@ -154,9 +152,12 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Erro ao gerar pagamento. Tente novamente.")
 
 # ========================================================
-# INICIALIZAÇÃO (PRODUÇÃO)
+# CONFIGURAÇÃO FINAL
 # ========================================================
 async def main():
+    await application.initialize()
+    await application.start()
+    
     # Configura webhook
     await application.bot.set_webhook(
         url=f"{DOMINIO}/telegram_webhook",
@@ -168,8 +169,8 @@ async def main():
     application.add_handler(CommandHandler("menu", menu))
     application.add_handler(CallbackQueryHandler(handle_button))
     
-    # Inicia servidor Flask com Waitress
-    serve(app, host="0.0.0.0", port=8080)
+    # Inicia servidor Quart
+    await app.run_task(host='0.0.0.0', port=8080)
 
 if __name__ == "__main__":
     asyncio.run(main())

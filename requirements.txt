@@ -1,6 +1,4 @@
 python-telegram-bot==20.3
 quart==0.18.4
 requests==2.31.0
-hmac==0.1.0
-hashlib==20081119.2
 python-dotenv==1.0.0

@@ -21,7 +21,7 @@ MERCADOPAGO_TOKEN = os.getenv("MERCADOPAGO_TOKEN")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 DOMINIO = os.getenv("RAILWAY_STATIC_URL")
 
-# LINKS REAIS DOS PDFs (SUBSTITUA)
+# LINKS REAIS DOS PDFs (SUBSTITUA!)
 PDF_LINKS = {
     "pdf1": "https://drive.google.com/file/d/1-PwvnRSp73SpNYTqDg5TuJc8M5957CVF/view?usp=sharing",
     "pdf2": "https://drive.google.com/file/d/1-JzKTnHRg1Pj4x1BYH6I6GtHkMPEChcp/view?usp=sharing",
@@ -32,32 +32,30 @@ PDF_LINKS = {
 }
 
 # ========================================================
-# INICIALIZAÇÃO DO BOT
+# INICIALIZAÇÃO
 # ========================================================
-application = Application.builder().token(TELEGRAM_TOKEN).build()
 app = Flask(__name__)
+application = Application.builder().token(TELEGRAM_TOKEN).build()
 
 # ========================================================
 # ROTAS FLASK
 # ========================================================
 @app.route('/')
 def home():
-    return "🚀 Bot operacional! Envie /start no Telegram."
+    return "✅ Bot operacional! Envie /start no Telegram."
 
 @app.route('/telegram_webhook', methods=['POST'])
 def telegram_webhook():
-    """Recebe atualizações do Telegram"""
     try:
         update = Update.de_json(request.get_json(), application.bot)
         application.process_update(update)
         return 'OK', 200
     except Exception as e:
-        logger.error(f"Erro Telegram webhook: {str(e)}")
+        logger.error(f"Erro Telegram: {str(e)}")
         return 'Erro', 500
 
 @app.route('/mercadopago_webhook', methods=['POST'])
 def mercadopago_webhook():
-    """Processa pagamentos do Mercado Pago"""
     try:
         # Valida HMAC
         signature = request.headers.get('X-Signature')
@@ -66,9 +64,8 @@ def mercadopago_webhook():
         
         if not hmac.compare_digest(signature, f"sha256={hash_obj.hexdigest()}"):
             logger.error("Assinatura inválida!")
-            return jsonify({"status": "assinatura inválida"}), 403
+            return jsonify({"status": "error"}), 403
 
-        # Processa pagamento
         payment_id = request.json.get('data', {}).get('id')
         response = requests.get(
             f"https://api.mercadopago.com/v1/payments/{payment_id}",
@@ -91,7 +88,7 @@ def mercadopago_webhook():
         return jsonify({"status": "success"}), 200
 
     except Exception as e:
-        logger.error(f"Erro MP webhook: {str(e)}")
+        logger.error(f"Erro MP: {str(e)}")
         return jsonify({"status": "error"}), 500
 
 # ========================================================
@@ -99,7 +96,7 @@ def mercadopago_webhook():
 # ========================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Bem-vindo! Use /menu para ver os PDFs",
+        "👋 Bem-vindo! Use /menu para ver os PDFs.",
         parse_mode="MarkdownV2"
     )
 
@@ -118,6 +115,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="MarkdownV2"
     )
+
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -154,16 +152,16 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Erro ao gerar pagamento. Tente novamente.")
 
 # ========================================================
-# INICIALIZAÇÃO
+# INICIALIZAÇÃO (PORT 8080 PARA RAILWAY)
 # ========================================================
 def main():
-    # Registra handlers
+    # Registra handlers do bot
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("menu", menu))
     application.add_handler(CallbackQueryHandler(handle_button))
     
     # Configura webhook
-    application.run_webhook(
+    application.updater.start_webhook(
         listen="0.0.0.0",
         port=int(os.getenv("PORT", 8080)),
         webhook_url=f"{DOMINIO}/telegram_webhook",

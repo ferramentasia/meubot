@@ -22,7 +22,7 @@ MERCADOPAGO_TOKEN = os.getenv("MERCADOPAGO_TOKEN")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 DOMINIO = os.getenv("RAILWAY_STATIC_URL")
 
-# INSIRA SEUS LINKS REAIS AQUI
+# LINKS REAIS DOS SEUS PDFs
 PDF_LINKS = {
     "pdf1": "https://drive.google.com/file/d/1-PwvnRSp73SpNYTqDg5TuJc8M5957CVF/view?usp=sharing",
     "pdf2": "https://drive.google.com/file/d/1-JzKTnHRg1Pj4x1BYH6I6GtHkMPEChcp/view?usp=sharing",
@@ -33,18 +33,16 @@ PDF_LINKS = {
 }
 
 # ========================================================
-# CONFIGURAÇÃO DO FLASK (WEBSERVER)
+# CONFIGURAÇÃO FLASK (PORT 8080)
 # ========================================================
 app = Flask(__name__)
 
-# Rota principal para verificar se o servidor está online
 @app.route('/')
 def home():
-    return "🚀 Bot em operação! Acesse via Telegram: t.me/seu_bot"
+    return "🚀 Bot em operação! Acesse via Telegram."
 
-# Rota do webhook para processar pagamentos
 @app.route('/webhook', methods=['POST'])
-def webhook():
+def mercadopago_webhook():
     try:
         # Validação de segurança
         signature = request.headers.get('X-Signature')
@@ -57,7 +55,7 @@ def webhook():
 
         payment_id = request.json.get('data', {}).get('id')
         if not payment_id:
-            return jsonify({"status": "dados inválidos"}), 400
+            return jsonify({"status": "invalid data"}), 400
 
         # Busca detalhes do pagamento
         response = requests.get(
@@ -73,7 +71,6 @@ def webhook():
                 pdf_link = PDF_LINKS.get(pdf_id)
                 
                 if pdf_link:
-                    # Envia o PDF via Telegram
                     application.bot.send_message(
                         chat_id=user_id,
                         text=f"✅ *Pagamento Aprovado!*\n\nAcesse seu PDF: {pdf_link}",
@@ -88,28 +85,26 @@ def webhook():
         return jsonify({"status": "error"}), 500
 
 # ========================================================
-# LÓGICA DO BOT TELEGRAM
+# LÓGICA DO BOT TELEGRAM (WEBHOOK)
 # ========================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 *Bem-vindo à Loja de PDFs!*\n\nUse /menu para ver nossos produtos.",
+        "👋 Bem-vindo! Use /menu para ver os PDFs disponíveis.",
         parse_mode="MarkdownV2"
     )
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("📊 Planilha Orçamento Familiar", callback_data='pdf1')],
-        [InlineKeyboardButton("🛒 Guia Compras Conscientes", callback_data='pdf2')],
-        [InlineKeyboardButton("💡 Economia de Energia", callback_data='pdf3')],
+        [InlineKeyboardButton("📊 Planilha Orçamento", callback_data='pdf1')],
+        [InlineKeyboardButton("🛒 Guia Compras", callback_data='pdf2')],
+        [InlineKeyboardButton("💡 Economia Energia", callback_data='pdf3')],
         [InlineKeyboardButton("🍲 Receitas Econômicas", callback_data='pdf4')],
         [InlineKeyboardButton("🚀 Sair das Dívidas", callback_data='pdf5')],
-        [InlineKeyboardButton("🎯 Planejador Metas Financeiras", callback_data='pdf6')]
+        [InlineKeyboardButton("🎯 Metas Financeiras", callback_data='pdf6')]
     ]
     
     await update.message.reply_text(
-        "📚 *Escolha seu PDF:*\n\n"
-        "Todos por R\$9,90 • Pagamento via PIX\n"
-        "Após a confirmação, enviaremos o link automaticamente!",
+        "📚 *Escolha seu PDF:*\nPreço: R\$9,90 • Pagamento via PIX",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="MarkdownV2"
     )
@@ -121,11 +116,10 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pdf_id = query.data
     user_id = query.from_user.id
     
-    # Configuração do pagamento
     payload = {
         "transaction_amount": 1.00,
         "payment_method_id": "pix",
-        "payer": {"email": "client@example.com"},
+        "payer": {"email": "user@example.com"},
         "description": f"PDF {pdf_id}",
         "external_reference": f"{user_id}:{pdf_id}",
         "notification_url": f"{DOMINIO}/webhook"
@@ -141,32 +135,35 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         payment_link = payment_data['point_of_interaction']['transaction_data']['ticket_url']
         
         await query.edit_message_text(
-            f"🔗 [Clique aqui para pagar via PIX]({payment_link})\n\n"
-            "Após a confirmação do pagamento, enviaremos o PDF automaticamente!",
+            f"💳 [Pagar via PIX]({payment_link})\n\nApós pagar, o PDF será enviado automaticamente!",
             parse_mode="MarkdownV2",
             disable_web_page_preview=True
         )
         
     except Exception as e:
         logger.error(f"Erro MP: {str(e)}")
-        await query.edit_message_text("❌ Erro ao processar pagamento. Tente novamente.")
+        await query.edit_message_text("❌ Erro ao processar pagamento.")
 
 # ========================================================
-# INICIALIZAÇÃO
+# INICIALIZAÇÃO (CONFIGURAÇÃO RAILWAY)
 # ========================================================
 def run_flask():
-    app.run(host='0.0.0.0', port=int(os.getenv("PORT", 8000)))
+    app.run(host='0.0.0.0', port=int(os.getenv("PORT", 8080)))
 
-if __name__ == "__main__":
+def run_bot():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
-    
-    # Registra handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("menu", menu))
     application.add_handler(CallbackQueryHandler(handle_button))
-    
-    # Inicia servidor web em thread separada
-    Thread(target=run_flask).start()
-    
-    # Inicia o bot
     application.run_polling()
+
+if __name__ == "__main__":
+    # Railway requer que ambas as threads sejam iniciadas no main
+    flask_thread = Thread(target=run_flask)
+    bot_thread = Thread(target=run_bot)
+    
+    flask_thread.start()
+    bot_thread.start()
+    
+    flask_thread.join()
+    bot_thread.join()

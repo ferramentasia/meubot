@@ -9,7 +9,7 @@ from flask import Flask, request, jsonify
 from threading import Thread
 
 # ========================================================
-# CONFIGURAÇÕES DE PRODUÇÃO (OBRIGATÓRIAS NO RAILWAY)
+# CONFIGURAÇÕES DE PRODUÇÃO (OBRIGATÓRIAS)
 # ========================================================
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -17,12 +17,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")            # Token do BotFather
-MERCADOPAGO_TOKEN = os.getenv("MERCADOPAGO_TOKEN")      # Token de produção (APP_USR-...)
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")            # Chave secreta para validação
-DOMINIO = os.getenv("RAILWAY_STATIC_URL")               # Automático no Railway
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")         # Token do BotFather
+MERCADOPAGO_TOKEN = os.getenv("MERCADOPAGO_TOKEN")   # Token de produção (APP_USR-...)
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")         # Chave HMAC (ex: openssl rand -hex 32)
+DOMINIO = os.getenv("RAILWAY_STATIC_URL")            # Automático no Railway
 
-# Links REAIS dos 6 PDFs (SUBSTITUA COM SEUS LINKS!)
+# Links REAIS dos PDFs (SUBSTITUA COM SEUS LINKS!)
 PDF_LINKS = {
     "pdf1": "https://drive.google.com/file/d/1-PwvnRSp73SpNYTqDg5TuJc8M5957CVF/view?usp=sharing",
     "pdf2": "https://drive.google.com/file/d/1-JzKTnHRg1Pj4x1BYH6I6GtHkMPEChcp/view?usp=sharing",
@@ -33,12 +33,12 @@ PDF_LINKS = {
 }
 
 # ========================================================
-# SERVIDOR WEB (FLASK) PARA WEBHOOK
+# SERVIDOR WEB PARA WEBHOOK (FLASK)
 # ========================================================
 app = Flask(__name__)
 
 @app.route('/mercadopago_webhook', methods=['POST'])
-def handle_mp_webhook():
+def mercadopago_webhook():
     try:
         # Validação HMAC
         signature = request.headers.get('X-Signature')
@@ -75,11 +75,11 @@ def handle_mp_webhook():
         return jsonify({"status": "success"}), 200
 
     except Exception as e:
-        logger.error(f"ERRO NO WEBHOOK: {str(e)}")
+        logger.error(f"ERRO: {str(e)}")
         return jsonify({"status": "error"}), 500
 
 # ========================================================
-# LÓGICA PRINCIPAL DO BOT
+# LÓGICA DO BOT TELEGRAM
 # ========================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -91,7 +91,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🎯 Metas Financeiras (R$9,90)", callback_data='pdf6')]
     ]
     await update.message.reply_text(
-        "📚 *LOJA DE MATERIAIS EDUCACIONAIS*\nEscolha seu produto:",
+        "📚 *LOJA DE MATERIAIS EDUCACIONAIS*",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="MarkdownV2"
     )
@@ -111,7 +111,7 @@ async def handle_pdf_selection(update: Update, context: ContextTypes.DEFAULT_TYP
             "transaction_amount": 1.00,
             "payment_method_id": "pix",
             "payer": {"email": "cliente@exemplo.com"},
-            "description": f"Material Educacional - {pdf_id.upper()}",
+            "description": f"PDF {pdf_id.upper()}",
             "external_reference": f"{user_id}:{pdf_id}",
             "notification_url": f"{DOMINIO}/mercadopago_webhook"
         }
@@ -129,17 +129,17 @@ async def handle_pdf_selection(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
 # ========================================================
-# INICIALIZAÇÃO DO SISTEMA
+# INICIALIZAÇÃO
 # ========================================================
-def run_flask_server():
+def run_flask():
     app.run(host='0.0.0.0', port=int(os.getenv("PORT", 8080)))
 
-def run_telegram_bot():
+def run_bot():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(handle_pdf_selection))
     application.run_polling()
 
 if __name__ == "__main__":
-    Thread(target=run_flask_server).start()
-    run_telegram_bot()
+    Thread(target=run_flask).start()
+    run_bot()

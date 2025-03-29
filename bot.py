@@ -22,7 +22,6 @@ MERCADOPAGO_TOKEN = os.getenv("MERCADOPAGO_TOKEN")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 DOMINIO = os.getenv("RAILWAY_STATIC_URL")
 
-# LINKS REAIS DOS SEUS PDFs
 PDF_LINKS = {
     "pdf1": "https://drive.google.com/file/d/1-PwvnRSp73SpNYTqDg5TuJc8M5957CVF/view?usp=sharing",
     "pdf2": "https://drive.google.com/file/d/1-JzKTnHRg1Pj4x1BYH6I6GtHkMPEChcp/view?usp=sharing",
@@ -33,31 +32,31 @@ PDF_LINKS = {
 }
 
 # ========================================================
-# CONFIGURAÇÃO FLASK (PORT 8080)
+# FLASK (RODANDO NA PORTA CORRETA)
 # ========================================================
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "🚀 Bot em operação! Acesse via Telegram."
+    return "✅ Bot operacional! Acesse via Telegram."
 
 @app.route('/webhook', methods=['POST'])
 def mercadopago_webhook():
     try:
-        # Validação de segurança
+        # Validação HMAC
         signature = request.headers.get('X-Signature')
         payload = request.get_data()
         hash_obj = hmac.new(WEBHOOK_SECRET.encode(), payload, hashlib.sha256)
         
         if not hmac.compare_digest(signature, f"sha256={hash_obj.hexdigest()}"):
-            logger.warning("Assinatura inválida!")
+            logger.error("Assinatura inválida!")
             return jsonify({"status": "error"}), 403
 
         payment_id = request.json.get('data', {}).get('id')
         if not payment_id:
             return jsonify({"status": "invalid data"}), 400
 
-        # Busca detalhes do pagamento
+        # Busca status do pagamento
         response = requests.get(
             f"https://api.mercadopago.com/v1/payments/{payment_id}",
             headers={"Authorization": f"Bearer {MERCADOPAGO_TOKEN}"}
@@ -85,11 +84,11 @@ def mercadopago_webhook():
         return jsonify({"status": "error"}), 500
 
 # ========================================================
-# LÓGICA DO BOT TELEGRAM (WEBHOOK)
+# BOT TELEGRAM (USANDO WEBHOOK)
 # ========================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Bem-vindo! Use /menu para ver os PDFs disponíveis.",
+        "👋 Bem-vindo! Use /menu para ver os PDFs.",
         parse_mode="MarkdownV2"
     )
 
@@ -135,7 +134,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         payment_link = payment_data['point_of_interaction']['transaction_data']['ticket_url']
         
         await query.edit_message_text(
-            f"💳 [Pagar via PIX]({payment_link})\n\nApós pagar, o PDF será enviado automaticamente!",
+            f"💳 [Clique para pagar via PIX]({payment_link})\n\nApós pagar, o PDF será enviado automaticamente!",
             parse_mode="MarkdownV2",
             disable_web_page_preview=True
         )
@@ -145,7 +144,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Erro ao processar pagamento.")
 
 # ========================================================
-# INICIALIZAÇÃO (CONFIGURAÇÃO RAILWAY)
+# INICIALIZAÇÃO (CONFIGURAÇÃO PARA RAILWAY)
 # ========================================================
 def run_flask():
     app.run(host='0.0.0.0', port=int(os.getenv("PORT", 8080)))
@@ -158,12 +157,5 @@ def run_bot():
     application.run_polling()
 
 if __name__ == "__main__":
-    # Railway requer que ambas as threads sejam iniciadas no main
-    flask_thread = Thread(target=run_flask)
-    bot_thread = Thread(target=run_bot)
-    
-    flask_thread.start()
-    bot_thread.start()
-    
-    flask_thread.join()
-    bot_thread.join()
+    Thread(target=run_flask).start()
+    Thread(target=run_bot).start()

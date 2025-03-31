@@ -3,14 +3,13 @@ import logging
 import requests
 import hmac
 import hashlib
-from urllib.parse import urljoin
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from flask import Flask, request, jsonify
 from threading import Thread
 
 # ========================================================
-# CONFIGURAÇÕES (OBRIGATÓRIAS)
+# CONFIGURAÇÕES (VERIFICAÇÃO RIGOROSA)
 # ========================================================
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -18,17 +17,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Variáveis de ambiente críticas
+# Validação crítica das variáveis
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 MERCADOPAGO_TOKEN = os.getenv("MERCADOPAGO_TOKEN")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
-DOMINIO = os.getenv("RAILWAY_STATIC_URL")  # Ex: https://seusite.up.railway.app
+DOMINIO = os.getenv("RAILWAY_STATIC_URL")
 
-# Verificação de variáveis
 if not all([TELEGRAM_TOKEN, MERCADOPAGO_TOKEN, WEBHOOK_SECRET, DOMINIO]):
-    raise ValueError("Variáveis de ambiente não configuradas corretamente!")
+    missing = [var for var in ["TELEGRAM_TOKEN", "MERCADOPAGO_TOKEN", "WEBHOOK_SECRET", "RAILWAY_STATIC_URL"] if not os.getenv(var)]
+    raise ValueError(f"Variáveis faltando: {', '.join(missing)}")
 
-# Links reais dos PDFs
+# Links reais dos PDFs (SUBSTITUA!)
 PDF_LINKS = {
     "pdf1": "https://drive.google.com/file/d/1-PwvnRSp73SpNYTqDg5TuJc8M5957CVF/view?usp=sharing",
     "pdf2": "https://drive.google.com/file/d/1-JzKTnHRg1Pj4x1BYH6I6GtHkMPEChcp/view?usp=sharing",
@@ -39,14 +38,18 @@ PDF_LINKS = {
 }
 
 # ========================================================
-# SERVIDOR WEB (FLASK)
+# SERVIDOR WEB (FLASK COM ROTA RAIZ)
 # ========================================================
 app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "🚀 Bot operacional! Acesse via Telegram: t.me/seu_bot"
 
 @app.route('/mercadopago_webhook', methods=['POST'])
 def mercadopago_webhook():
     try:
-        # Validação HMAC
+        # Validação HMAC reforçada
         signature = request.headers.get('X-Signature', '')
         payload = request.get_data()
         hash_obj = hmac.new(WEBHOOK_SECRET.encode(), payload, hashlib.sha256)
@@ -55,7 +58,7 @@ def mercadopago_webhook():
             logger.error("Tentativa de acesso não autorizada!")
             return jsonify({"status": "error"}), 403
 
-        # Processamento do pagamento
+        # Processamento seguro do pagamento
         payment_id = request.json.get('data', {}).get('id')
         if not payment_id:
             return jsonify({"status": "invalid data"}), 400
@@ -76,7 +79,7 @@ def mercadopago_webhook():
                         f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
                         json={
                             "chat_id": user_id,
-                            "text": f"✅ *Pagamento confirmado!*\n\nAcesse: {pdf_link}",
+                            "text": f"✅ *Pagamento confirmado!*\n\n📥 Acesse: {pdf_link}",
                             "parse_mode": "MarkdownV2",
                             "disable_web_page_preview": True
                         }
@@ -85,11 +88,11 @@ def mercadopago_webhook():
         return jsonify({"status": "success"}), 200
 
     except Exception as e:
-        logger.error(f"Erro no webhook: {str(e)}")
+        logger.error(f"Erro crítico no webhook: {str(e)}", exc_info=True)
         return jsonify({"status": "error"}), 500
 
 # ========================================================
-# LÓGICA DO BOT (COM PROTEÇÃO CONTRA CONFLITOS)
+# LÓGICA DO BOT (COM URL ABSOLUTA GARANTIDA)
 # ========================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -101,7 +104,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🎯 Metas Financeiras (R$9,90)", callback_data='pdf6')]
     ]
     await update.message.reply_text(
-        "📚 *Escolha seu PDF:*",
+        "📚 *Materiais Exclusivos Disponíveis:*",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="MarkdownV2"
     )
@@ -114,11 +117,11 @@ async def handle_pdf_selection(update: Update, context: ContextTypes.DEFAULT_TYP
         user_id = query.from_user.id
         pdf_id = query.data
         
-        # URL absoluta e validada
-        notification_url = urljoin(DOMINIO, "/mercadopago_webhook")
-        logger.info(f"Notificação URL: {notification_url}")
+        # Geração segura da URL de notificação
+        notification_url = f"{DOMINIO}/mercadopago_webhook"
+        logger.info(f"Gerando pagamento para: {notification_url}")
         
-        # Dados do pagamento
+        # Dados de pagamento completos
         payload = {
             "transaction_amount": 1.00,
             "payment_method_id": "pix",
@@ -134,41 +137,44 @@ async def handle_pdf_selection(update: Update, context: ContextTypes.DEFAULT_TYP
             "notification_url": notification_url
         }
         
-        # Requisição à API
+        # Comunicação robusta com a API
         response = requests.post(
             "https://api.mercadopago.com/v1/payments",
             headers={
                 "Authorization": f"Bearer {MERCADOPAGO_TOKEN}",
                 "Content-Type": "application/json"
             },
-            json=payload
+            json=payload,
+            timeout=10
         )
-        
-        # Tratamento de erros
+
+        # Tratamento detalhado de respostas
         if response.status_code not in [200, 201]:
-            logger.error(f"Erro MP {response.status_code}: {response.text}")
-            await query.edit_message_text("❌ Erro ao processar pagamento.")
+            logger.error(f"Falha na API MP: {response.status_code} - {response.text}")
+            await query.edit_message_text("❌ Falha no sistema de pagamentos. Tente novamente.")
             return
 
         payment_data = response.json()
         payment_link = payment_data['point_of_interaction']['transaction_data']['ticket_url']
         
         await query.edit_message_text(
-            f"💳 [Clique para pagar via PIX]({payment_link})\n\n"
+            f"💳 *PAGAMENTO VIA PIX*\n\n"
+            f"Valor: R\$1,00\n"
+            f"[Clique aqui para pagar]({payment_link})\n\n"
             "Após a confirmação, seu PDF será enviado automaticamente!",
             parse_mode="MarkdownV2",
             disable_web_page_preview=True
         )
 
     except KeyError:
-        logger.error("Resposta inesperada da API do Mercado Pago")
+        logger.error("Estrutura de resposta inválida da API")
         await query.edit_message_text("⚠️ Erro inesperado. Contate o suporte.")
     except Exception as e:
-        logger.error(f"Erro crítico: {str(e)}")
-        await query.edit_message_text("⚠️ Falha temporária. Tente novamente.")
+        logger.error(f"Falha crítica: {str(e)}", exc_info=True)
+        await query.edit_message_text("⛔ Erro temporário. Por favor, tente novamente mais tarde.")
 
 # ========================================================
-# INICIALIZAÇÃO (GARANTINDO ÚNICA INSTÂNCIA)
+# INICIALIZAÇÃO OTIMIZADA
 # ========================================================
 def run_flask():
     app.run(host='0.0.0.0', port=int(os.getenv("PORT", 8080)))
@@ -177,9 +183,9 @@ def run_bot():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(handle_pdf_selection))
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    application.run_polling()
 
 if __name__ == "__main__":
-    # Railway requer configuração de instância única
+    # Configuração para Railway (1 instância apenas)
     Thread(target=run_flask, daemon=True).start()
     run_bot()

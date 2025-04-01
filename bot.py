@@ -25,10 +25,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("Comprar PDF 2", callback_data='pdf2')]
         ]
         
-        await update.message.reply_text(
+        await update.message.reply_text(  # Parêntese corrigido aqui
             "Escolha seu material:",
             reply_markup=InlineKeyboardMarkup(keyboard)
-        
+        )  # Este era o parêntese faltando
+
     except Exception as e:
         logger.error(f"Erro no /start: {str(e)}")
 

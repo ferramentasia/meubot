@@ -22,6 +22,7 @@ REQUIRED_ENV_VARS = [
     "MERCADOPAGO_TOKEN",
     "WEBHOOK_SECRET",
     "RAILWAY_STATIC_URL"
+    "MP_HMAC_SECRET"
 ]
 
 missing_vars = [var for var in REQUIRED_ENV_VARS if not os.getenv(var)]
@@ -29,6 +30,7 @@ if missing_vars:
     raise EnvironmentError(f"Variáveis faltando: {', '.join(missing_vars)}")
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+MP_HMAC = os.getenv("MP_HMAC_SECRET")
 MERCADOPAGO_TOKEN = os.getenv("MERCADOPAGO_TOKEN")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 DOMINIO = os.getenv("RAILWAY_STATIC_URL")

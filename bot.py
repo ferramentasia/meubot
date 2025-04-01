@@ -1,61 +1,59 @@
 import os
 import logging
-import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from flask import Flask, request
 
-# =============== CONFIGURAÇÃO INICIAL ===============
+# Configuração básica
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Variáveis obrigatórias
+# Variáveis de ambiente
 TOKEN = os.environ['TELEGRAM_TOKEN']
 SECRET = os.environ['TELEGRAM_SECRET']
 URL = os.environ['RAILWAY_URL']
 
-# =============== LÓGICA DO BOT ===============
+# Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        keyboard = [
-            [InlineKeyboardButton("Comprar PDF 1", callback_data='pdf1')],
-            [InlineKeyboardButton("Comprar PDF 2", callback_data='pdf2')]
-        ]
-        
-        await update.message.reply_text(  # Parêntese corrigido aqui
-            "Escolha seu material:",
+        keyboard = [[InlineKeyboardButton("TESTAR BOTÃO", callback_data='test')]]
+        await update.message.reply_text(
+            "✅ Bot funcionando!",
             reply_markup=InlineKeyboardMarkup(keyboard)
-        )  # Este era o parêntese faltando
-
+        )
+        logger.info("Comando /start recebido de %s", update.effective_user.id)
     except Exception as e:
-        logger.error(f"Erro no /start: {str(e)}")
+        logger.error(f"ERRO: {str(e)}")
 
-async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
-    await update.callback_query.edit_message_text("Pagamento em desenvolvimento...")
+    await update.callback_query.edit_message_text("🎉 Botão funcionando!")
 
-# =============== SERVIDOR WEB ===============
+# Configuração do Flask
 app = Flask(__name__)
 bot_app = Application.builder().token(TOKEN).build()
 
 @app.post('/webhook')
 def webhook():
     if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != SECRET:
-        return 'Unauthorized', 403
+        return 'Acesso negado!', 403
     
-    update = Update.de_json(request.get_json(), bot_app.bot)
-    bot_app.update_queue.put(update)
-    return 'OK', 200
+    try:
+        update = Update.de_json(request.get_json(), bot_app.bot)
+        bot_app.update_queue.put(update)
+        return 'OK', 200
+    except Exception as e:
+        logger.error(f"ERRO NO WEBHOOK: {str(e)}")
+        return 'Erro', 500
 
-# =============== DEPLOY ===============
 if __name__ == '__main__':
-    # Registra handlers
+    # Registra comandos
     bot_app.add_handler(CommandHandler('start', start))
-    bot_app.add_handler(CallbackQueryHandler(handle_button))
+    bot_app.add_handler(CallbackQueryHandler(button_handler))
     
-    # Configuração do servidor
+    # Inicia servidor
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)

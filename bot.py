@@ -51,18 +51,18 @@ app = Flask(__name__)
 application = Application.builder().token(TELEGRAM_TOKEN).build()
 
 # ========================================================
-# ROTAS
+# ROTAS CORRIGIDAS
 # ========================================================
-@app.route('/')
+@app.route('/', methods=['GET'])  # Método GET explícito
 def health_check():
-    return "✅ Bot operacional! Envie /start no Telegram", 200
+    return "🚀 Bot Online! Use /start no Telegram", 200
 
 @app.route('/telegram_webhook', methods=['POST'])
 def handle_telegram():
     try:
-        # Validação do secret token
+        # Verificação do secret token
         if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != TELEGRAM_SECRET:
-            logger.warning("Acesso não autorizado ao webhook do Telegram!")
+            logger.warning("Tentativa de acesso não autorizada!")
             return jsonify(status="forbidden"), 403
 
         update = Update.de_json(request.get_json(force=True), application.bot)
@@ -70,7 +70,7 @@ def handle_telegram():
         return jsonify(status="success"), 200
 
     except Exception as e:
-        logger.error(f"ERRO NO WEBHOOK TELEGRAM: {str(e)}")
+        logger.error(f"Erro no webhook: {str(e)}")
         return jsonify(status="error"), 500
 
 @app.route('/mercadopago_webhook', methods=['POST'])
@@ -82,10 +82,9 @@ def handle_mercadopago():
         computed_hash = hmac.new(MP_HMAC.encode(), payload, hashlib.sha256).hexdigest()
 
         if not hmac.compare_digest(f'sha256={computed_hash}', signature):
-            logger.warning("Assinatura MP inválida!")
+            logger.warning("Assinatura inválida do MP!")
             return jsonify(status="forbidden"), 403
 
-        # Processar pagamento
         payment_id = request.json.get('data', {}).get('id')
         if not payment_id:
             return jsonify(status="bad request"), 400
@@ -104,7 +103,7 @@ def handle_mercadopago():
                     f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage',
                     json={
                         'chat_id': user_id,
-                        'text': f'✅ Pagamento confirmado!\\nAcesse: {pdf_link}',
+                        'text': f'✅ Pagamento aprovado!\\nLink: {pdf_link}',
                         'parse_mode': 'Markdown'
                     }
                 )
@@ -112,15 +111,15 @@ def handle_mercadopago():
         return jsonify(status="success"), 200
 
     except Exception as e:
-        logger.error(f"ERRO MP WEBHOOK: {str(e)}")
+        logger.error(f"Erro MP: {str(e)}")
         return jsonify(status="error"), 500
 
 # ========================================================
-# HANDLERS
+# HANDLERS ATUALIZADOS
 # ========================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        logger.info(f"Novo usuário: {update.effective_user.id}")
+        logger.info(f"Comando /start de: {update.effective_user.id}")
         keyboard = [
             [InlineKeyboardButton("📊 Planilha", callback_data='pdf1')],
             [InlineKeyboardButton("🛒 Compras", callback_data='pdf2')],
@@ -135,7 +134,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="MarkdownV2"
         )
     except Exception as e:
-        logger.error(f"FALHA NO /start: {str(e)}")
+        logger.error(f"Falha no /start: {str(e)}")
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -167,23 +166,30 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     except Exception as e:
-        logger.error(f"ERRO NO BOTÃO: {str(e)}")
+        logger.error(f"Erro: {str(e)}")
         await query.edit_message_text("⚠️ Tente novamente mais tarde.")
 
 # ========================================================
-# INICIALIZAÇÃO
+# INICIALIZAÇÃO ROBUSTA
 # ========================================================
 def main():
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(handle_button))
-    
-    # Webhook já configurado manualmente - não reconfigurar
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.getenv("PORT", 8080)),
-        webhook_url=f"{DOMINIO}/telegram_webhook",
-        secret_token=TELEGRAM_SECRET
-    )
+    try:
+        # Registro de handlers
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CallbackQueryHandler(handle_button))
+        
+        # Configuração do webhook
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=int(os.getenv("PORT", 8080)),
+            webhook_url=f"{DOMINIO}/telegram_webhook",
+            secret_token=TELEGRAM_SECRET
+        )
+        logger.info("Aplicação iniciada com sucesso!")
+        
+    except Exception as e:
+        logger.critical(f"Falha crítica: {str(e)}")
+        raise
 
 if __name__ == "__main__":
     main()
